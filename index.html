@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Firmware Updater via WebUSB</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #log { background: #f5f5f5; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
+    button, input { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Firmware Updater via WebUSB</h1>
+  <button id="connect">Conectar ao Dispositivo</button>
+  <br>
+  <input type="file" id="firmware" accept=".bin">
+  <br>
+  <button id="flash">Atualizar Firmware</button>
+  <pre id="log"></pre>
+
+  <script>
+    const logElem = document.getElementById('log');
+    function log(msg) {
+      logElem.textContent += msg + "\n";
+      logElem.scrollTop = logElem.scrollHeight;
+    }
+    
+    let device;
+    
+    // Botão para conectar ao dispositivo via WebUSB
+    document.getElementById('connect').addEventListener('click', async () => {
+      try {
+        // Altere o vendorId para o do seu dispositivo (exemplo: 0x1234)
+        device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x1234 }] });
+        await device.open();
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+        // Normalmente, o bootloader utiliza a interface 0 – ajuste conforme necessário
+        await device.claimInterface(0);
+        log("Dispositivo conectado com sucesso!");
+      } catch (error) {
+        log("Erro na conexão: " + error);
+      }
+    });
+    
+    // Botão para iniciar a transferência do firmware
+    document.getElementById('flash').addEventListener('click', async () => {
+      if (!device) {
+        log("Nenhum dispositivo conectado! Clique em 'Conectar ao Dispositivo'.");
+        return;
+      }
+      const fileInput = document.getElementById('firmware');
+      if (fileInput.files.length === 0) {
+        log("Selecione um arquivo de firmware (.bin).");
+        return;
+      }
+      const file = fileInput.files[0];
+      const arrayBuffer = await file.arrayBuffer();
+      log("Arquivo de firmware carregado: " + file.name + " (" + arrayBuffer.byteLength + " bytes)");
+      
+      // Exemplo de transferência: envia o firmware em blocos/chunks.
+      // Ajuste o endpoint e o chunkSize conforme as especificações do bootloader do seu dispositivo.
+      const endpointNumber = 1;
+      const chunkSize = 64;
+      let bytesSent = 0;
+      
+      try {
+        while (bytesSent < arrayBuffer.byteLength) {
+          const chunk = arrayBuffer.slice(bytesSent, bytesSent + chunkSize);
+          const result = await device.transferOut(endpointNumber, chunk);
+          if (result.status !== "ok") {
+            throw new Error("Transferência falhou em " + bytesSent + " bytes.");
+          }
+          bytesSent += chunk.byteLength;
+          log("Enviados " + bytesSent + " bytes...");
+        }
+        log("Atualização de firmware concluída com sucesso!");
+      } catch (error) {
+        log("Erro durante a transferência: " + error);
+      }
+    });
+  </script>
+</body>
+</html>
